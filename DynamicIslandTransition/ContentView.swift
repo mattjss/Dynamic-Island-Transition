@@ -17,8 +17,13 @@ struct ContentView: View {
 
 // MARK: - Animatable card (progress interpolates during the spring)
 
-private struct IslandTravelCard: View {
+struct IslandTravelCard: View, Animatable {
     var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
 
     private let cardSize: CGFloat = 258
     private let islandWidth: CGFloat = 126
@@ -40,8 +45,8 @@ private struct IslandTravelCard: View {
             let corner = (cardSize * 0.22) * (1 - t) + (min(islandWidth, islandHeight) / 2) * t
 
             let travelBlend = Float(sin(Double(t) * .pi))
-            let shader = Shader(
-                function: ShaderFunction(library: .default, name: "islandSqueeze"),
+            let squeezeShader = Shader(
+                function: ShaderFunction(library: .default, name: "IslandSqueeze"),
                 arguments: [
                     .float2(Float(w), Float(h)),
                     .float(travelBlend),
@@ -58,7 +63,7 @@ private struct IslandTravelCard: View {
                     .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
                     .drawingGroup()
                     .distortionEffect(
-                        shader,
+                        squeezeShader,
                         maxSampleOffset: CGSize(width: 80, height: 140),
                         isEnabled: travelBlend > 0.001
                     )
@@ -110,13 +115,6 @@ private struct IslandTravelCard: View {
 
     private var landscapePhotoURL: URL? {
         URL(string: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80")
-    }
-}
-
-extension IslandTravelCard: Animatable {
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
     }
 }
 

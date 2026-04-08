@@ -1,10 +1,10 @@
 #include <metal_stdlib>
-#include <SwiftUI/SwiftUI.h>
+#include <SwiftUI/SwiftUI_Metal.h>
 using namespace metal;
 
 /// Distortion: returns **source** sample coordinates for each **destination** pixel.
 /// Strongest vertical squeeze near the top of the layer (Dynamic Island side) so the card reads as being pulled into the pill.
-[[ stitchable ]] float2 islandSqueeze(
+[[ stitchable ]] float2 IslandSqueeze(
     float2 position,
     float2 size,
     float travelBlend,
