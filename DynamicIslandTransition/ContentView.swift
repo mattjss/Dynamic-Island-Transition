@@ -5,10 +5,11 @@ struct ContentView: View {
     @State private var suckedIn = false
     @State private var islandBump = false
 
-    private let travelSpring = Animation.spring(response: 0.45, dampingFraction: 0.72)
+    /// Softer damping + interpolating spring for a slight elastic overshoot (genie / vacuum tail).
+    private let travelSpring = Animation.interpolatingSpring(stiffness: 210, damping: 19)
     private let cardW: CGFloat = 260
     private let cardH: CGFloat = 260
-    /// Lifts card toward Dynamic Island as progress runs 0 → 1.
+    /// Max vertical lift; eased so motion tightens mid-suck to match shader suction.
     private let liftPerProgress: CGFloat = 410
     private let islandBaseW: CGFloat = 126
     private let islandBaseH: CGFloat = 37
@@ -39,10 +40,10 @@ struct ContentView: View {
                                             .float(time),
                                         ]
                                     ),
-                                    maxSampleOffset: CGSize(width: 200, height: 480),
+                                    maxSampleOffset: CGSize(width: 220, height: 520),
                                     isEnabled: true
                                 )
-                                .offset(y: -progress * liftPerProgress)
+                                .offset(y: -liftOffset(progress: progress))
                                 .opacity(progress >= 0.998 ? 0 : 1)
                         }
                         Spacer(minLength: 0)
@@ -75,6 +76,19 @@ struct ContentView: View {
                 playIslandBump()
             }
         }
+    }
+
+    /// Ease-in-out cubic: slow start, strong mid pull, settle — matches portal suction timing.
+    private func liftOffset(progress: CGFloat) -> CGFloat {
+        let p = Double(progress)
+        let t: Double
+        if p < 0.5 {
+            t = 4 * p * p * p
+        } else {
+            let u = -2 * p + 2
+            t = 1 - u * u * u / 2
+        }
+        return CGFloat(t) * liftPerProgress
     }
 
     private func playIslandBump() {
