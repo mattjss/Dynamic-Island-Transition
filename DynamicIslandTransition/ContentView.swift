@@ -17,11 +17,12 @@ struct ContentView: View {
 }
 
 // MARK: - Animatable card (progress interpolates during the spring)
+// Animatable requires nonisolated `animatableData`; do not mark this type `@MainActor`.
 
 struct IslandTravelCard: View, Animatable {
     var progress: CGFloat
 
-    var animatableData: CGFloat {
+    nonisolated var animatableData: CGFloat {
         get { progress }
         set { progress = newValue }
     }
@@ -107,13 +108,18 @@ struct IslandTravelCard: View, Animatable {
     }
 }
 
-// MARK: - Top squeeze (replaces Metal distortion; anchor = Dynamic Island side)
+// MARK: - Top squeeze (GeometryEffect + Animatable need nonisolated requirements)
 
-private struct TopIslandSqueezeEffect: GeometryEffect {
+private struct TopIslandSqueezeEffect: GeometryEffect, Animatable {
     /// `sin(π·t) * squeezeStrength` — peaks mid-flight, strongest near top via gradient mask.
     var amount: CGFloat
 
-    func effectValue(size: CGSize) -> ProjectionTransform {
+    nonisolated var animatableData: CGFloat {
+        get { amount }
+        set { amount = newValue }
+    }
+
+    nonisolated func effectValue(size: CGSize) -> ProjectionTransform {
         guard amount > 0.001 else { return ProjectionTransform(.identity) }
 
         let normalized = min(amount / 4.8, 1.5)
@@ -125,13 +131,6 @@ private struct TopIslandSqueezeEffect: GeometryEffect {
         t = t.scaledBy(x: scaleX, y: scaleY)
         t = t.translatedBy(x: -size.width / 2, y: 0)
         return ProjectionTransform(t)
-    }
-}
-
-extension TopIslandSqueezeEffect: Animatable {
-    var animatableData: CGFloat {
-        get { amount }
-        set { amount = newValue }
     }
 }
 
