@@ -1,0 +1,19 @@
+name: DynamicIslandTransition
+options:
+  bundleIdPrefix: com.mattjss
+  deploymentTarget: "18.0"
+targets:
+  DynamicIslandTransition:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: DynamicIslandTransition
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mattjss.DynamicIslandTransition
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1"
