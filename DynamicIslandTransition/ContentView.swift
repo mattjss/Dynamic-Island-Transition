@@ -1,38 +1,40 @@
 import SwiftUI
 
-/// 258×258 card with a landscape photo: centered horizontally, ~60% down the screen.
-/// Tap animates to the Dynamic Island over ~1.4s with a spring. During travel, a top-anchored
-/// squeeze (GeometryEffect) pinches the card toward the pill — same role as a Metal squeeze,
-/// without Metal/shader build fragility across Xcode SDKs.
+/// Snappy spring + vacuum-style motion: card rushes toward the island, squashes, and snaps into the pill.
 struct ContentView: View {
     @State private var travelProgress: CGFloat = 0
 
+    /// ~0.4s feel (response correlates with settle time for a spring).
+    private var travelSpring: Animation {
+        .spring(response: 0.4, dampingFraction: 0.6)
+    }
+
     var body: some View {
         IslandTravelCard(progress: travelProgress)
-            .animation(.spring(duration: 1.4), value: travelProgress)
             .onTapGesture {
-                travelProgress = travelProgress < 0.5 ? 1 : 0
+                withAnimation(travelSpring) {
+                    travelProgress = travelProgress < 0.5 ? 1 : 0
+                }
             }
     }
 }
 
-// MARK: - Animatable card (progress interpolates during the spring)
-// Animatable requires nonisolated `animatableData`; do not mark this type `@MainActor`.
+// MARK: - Card
 
-struct IslandTravelCard: View, Animatable {
+struct IslandTravelCard: View {
     var progress: CGFloat
-
-    nonisolated var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
 
     private let cardSize: CGFloat = 258
     private let islandWidth: CGFloat = 126
     private let islandHeight: CGFloat = 37
     private let islandTopOffset: CGFloat = 11
-    /// Tuned to match the prior Metal shader’s “~4.8” strength visually.
-    private let squeezeStrength: CGFloat = 4.8
+    private let cornerExpanded: CGFloat = 22
+    private var cornerPill: CGFloat { islandHeight / 2 }
+
+    /// Y scale → near zero at end (sucked through a narrow slot); X narrows less aggressively.
+    private let minVerticalScale: CGFloat = 0.08
+    /// X scale at full progress (message was incomplete — adjust if you want a different end width).
+    private let minHorizontalScale: CGFloat = 0.88
 
     var body: some View {
         GeometryReader { geometry in
@@ -42,21 +44,35 @@ struct IslandTravelCard: View, Animatable {
             let islandCenterY = safeTop + islandTopOffset + islandHeight / 2
 
             let t = max(0, min(1, progress))
-            let w = cardSize + (islandWidth - cardSize) * t
-            let h = cardSize + (islandHeight - cardSize) * t
-            let cy = startCenterY + (islandCenterY - startCenterY) * t
-            let corner = (cardSize * 0.22) * (1 - t) + (min(islandWidth, islandHeight) / 2) * t
+            // Ease-in curve: most spatial change happens late so it feels vacuumed in, then snaps with the spring.
+            let spatialT = pow(t, 1.9)
 
-            let travelBlend = CGFloat(sin(Double(t) * .pi))
+            let w = cardSize + (islandWidth - cardSize) * spatialT
+            let h = cardSize + (islandHeight - cardSize) * spatialT
+            let cy = startCenterY + (islandCenterY - startCenterY) * spatialT
+            let corner = cornerExpanded * (1 - spatialT) + cornerPill * spatialT
+
+            // Vacuum squeeze: Y collapses strongly toward the opening; X tapers more gently.
+            let scaleY = 1 + (minVerticalScale - 1) * t
+            let scaleX = 1 + (minHorizontalScale - 1) * t
+
+            let td = Double(t)
+            // Pulled-through-a-vacuum: wobble + skew strongest mid-travel, easing at ends.
+            let wobbleDegrees = 7 * sin(td * .pi) * (1 - t * 0.35)
+            let skew = 0.07 * sin(td * .pi * 1.5) * (1 - t)
 
             ZStack {
                 Color(.systemBackground)
                     .ignoresSafeArea()
 
-                landscapeCard(width: w, height: h)
+                cardFill
                     .frame(width: w, height: h)
                     .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-                    .modifier(TopIslandSqueezeEffect(amount: travelBlend * squeezeStrength))
+                    .scaleEffect(x: scaleX, y: scaleY, anchor: .top)
+                    .rotationEffect(.degrees(wobbleDegrees), anchor: .top)
+                    .transformEffect(
+                        CGAffineTransform(a: 1, b: 0, c: CGFloat(skew), d: 1, tx: 0, ty: 0)
+                    )
                     .position(x: centerX, y: cy)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,73 +80,19 @@ struct IslandTravelCard: View, Animatable {
         }
     }
 
-    private func landscapeCard(width: CGFloat, height: CGFloat) -> some View {
-        AsyncImage(url: landscapePhotoURL) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: width, height: height)
-                    .clipped()
-            case .failure:
-                landscapePlaceholder
-                    .frame(width: width, height: height)
-            case .empty:
-                ZStack {
-                    Color.secondary.opacity(0.2)
-                    ProgressView()
-                }
-                .frame(width: width, height: height)
-            @unknown default:
-                landscapePlaceholder
-                    .frame(width: width, height: height)
-            }
-        }
-    }
-
-    private var landscapePlaceholder: some View {
+    /// Local-only content (swap for `AsyncImage` / asset when ready).
+    private var cardFill: some View {
         ZStack {
             LinearGradient(
                 colors: [Color(red: 0.15, green: 0.35, blue: 0.55), Color(red: 0.45, green: 0.65, blue: 0.35)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Image(systemName: "mountain.2.fill")
-                .font(.system(size: 64, weight: .light))
-                .foregroundStyle(.white.opacity(0.85))
+            Image(systemName: "photo")
+                .font(.system(size: 56, weight: .medium))
+                .foregroundStyle(.white.opacity(0.9))
                 .symbolRenderingMode(.hierarchical)
         }
-    }
-
-    private var landscapePhotoURL: URL? {
-        URL(string: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80")
-    }
-}
-
-// MARK: - Top squeeze (GeometryEffect + Animatable need nonisolated requirements)
-
-private struct TopIslandSqueezeEffect: GeometryEffect, Animatable {
-    /// `sin(π·t) * squeezeStrength` — peaks mid-flight, strongest near top via gradient mask.
-    var amount: CGFloat
-
-    nonisolated var animatableData: CGFloat {
-        get { amount }
-        set { amount = newValue }
-    }
-
-    nonisolated func effectValue(size: CGSize) -> ProjectionTransform {
-        guard amount > 0.001 else { return ProjectionTransform(.identity) }
-
-        let normalized = min(amount / 4.8, 1.5)
-        let scaleY = 1.0 - normalized * 0.11
-        let scaleX = 1.0 - normalized * 0.028
-
-        var t = CGAffineTransform.identity
-        t = t.translatedBy(x: size.width / 2, y: 0)
-        t = t.scaledBy(x: scaleX, y: scaleY)
-        t = t.translatedBy(x: -size.width / 2, y: 0)
-        return ProjectionTransform(t)
     }
 }
 
