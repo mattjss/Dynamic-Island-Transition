@@ -1,65 +1,122 @@
 import SwiftUI
 
-/// Hero image that transitions between screen center and Dynamic Island–sized capsule at the top.
+/// 258×258 card with a landscape photo: centered horizontally, ~60% down the screen.
+/// Tap animates to the Dynamic Island over ~1.4s with a spring; a Metal squeeze shader
+/// pinches the top of the card during travel so it feels sucked into the pill.
 struct ContentView: View {
-    @Namespace private var imageNamespace
-    @State private var isAtIsland = false
+    @State private var travelProgress: CGFloat = 0
 
-    private let expandedSize: CGFloat = 220
+    var body: some View {
+        IslandTravelCard(progress: travelProgress)
+            .animation(.spring(duration: 1.4), value: travelProgress)
+            .onTapGesture {
+                travelProgress = travelProgress < 0.5 ? 1 : 0
+            }
+    }
+}
+
+// MARK: - Animatable card (progress interpolates during the spring)
+
+private struct IslandTravelCard: View {
+    var progress: CGFloat
+
+    private let cardSize: CGFloat = 258
     private let islandWidth: CGFloat = 126
     private let islandHeight: CGFloat = 37
-    /// Distance from the top safe area to the top edge of the island frame.
     private let islandTopOffset: CGFloat = 11
+    private let squeezeStrength: Float = 4.8
 
     var body: some View {
         GeometryReader { geometry in
             let safeTop = geometry.safeAreaInsets.top
-            let safeBottom = geometry.safeAreaInsets.bottom
             let centerX = geometry.size.width / 2
-            // Vertical center of the safe-area content (true “on screen” center).
-            let centerY = safeTop + (geometry.size.height - safeTop - safeBottom) / 2
-            // Center of the 126×37 island: top edge at safeTop + 11, then half height down.
+            let startCenterY = geometry.size.height * 0.6
             let islandCenterY = safeTop + islandTopOffset + islandHeight / 2
+
+            let t = max(0, min(1, progress))
+            let w = cardSize + (islandWidth - cardSize) * t
+            let h = cardSize + (islandHeight - cardSize) * t
+            let cy = startCenterY + (islandCenterY - startCenterY) * t
+            let corner = (cardSize * 0.22) * (1 - t) + (min(islandWidth, islandHeight) / 2) * t
+
+            let travelBlend = Float(sin(Double(t) * .pi))
+            let shader = Shader(
+                function: ShaderFunction(library: .default, name: "islandSqueeze"),
+                arguments: [
+                    .float2(Float(w), Float(h)),
+                    .float(travelBlend),
+                    .float(squeezeStrength),
+                ]
+            )
 
             ZStack {
                 Color(.systemBackground)
                     .ignoresSafeArea()
 
-                if isAtIsland {
-                    heroImage
-                        .frame(width: islandWidth, height: islandHeight)
-                        .clipShape(Capsule(style: .continuous))
-                        .matchedGeometryEffect(id: "hero", in: imageNamespace)
-                        .position(x: centerX, y: islandCenterY)
-                } else {
-                    heroImage
-                        .frame(width: expandedSize, height: expandedSize)
-                        .clipShape(RoundedRectangle(cornerRadius: expandedSize * 0.22, style: .continuous))
-                        .matchedGeometryEffect(id: "hero", in: imageNamespace)
-                        .position(x: centerX, y: centerY)
-                }
+                landscapeCard(width: w, height: h)
+                    .frame(width: w, height: h)
+                    .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+                    .drawingGroup()
+                    .distortionEffect(
+                        shader,
+                        maxSampleOffset: CGSize(width: 80, height: 140),
+                        isEnabled: travelBlend > 0.001
+                    )
+                    .position(x: centerX, y: cy)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
-            .animation(.spring(response: 0.52, dampingFraction: 0.82), value: isAtIsland)
-            .onTapGesture {
-                isAtIsland.toggle()
+        }
+    }
+
+    private func landscapeCard(width: CGFloat, height: CGFloat) -> some View {
+        AsyncImage(url: landscapePhotoURL) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: width, height: height)
+                    .clipped()
+            case .failure:
+                landscapePlaceholder
+                    .frame(width: width, height: height)
+            case .empty:
+                ZStack {
+                    Color.secondary.opacity(0.2)
+                    ProgressView()
+                }
+                .frame(width: width, height: height)
+            @unknown default:
+                landscapePlaceholder
+                    .frame(width: width, height: height)
             }
         }
     }
 
-    private var heroImage: some View {
+    private var landscapePlaceholder: some View {
         ZStack {
             LinearGradient(
-                colors: [.indigo, .cyan],
+                colors: [Color(red: 0.15, green: 0.35, blue: 0.55), Color(red: 0.45, green: 0.65, blue: 0.35)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Image(systemName: "photo")
-                .font(.system(size: 56, weight: .medium))
-                .foregroundStyle(.white.opacity(0.95))
+            Image(systemName: "mountain.2.fill")
+                .font(.system(size: 64, weight: .light))
+                .foregroundStyle(.white.opacity(0.85))
                 .symbolRenderingMode(.hierarchical)
         }
+    }
+
+    private var landscapePhotoURL: URL? {
+        URL(string: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80")
+    }
+}
+
+extension IslandTravelCard: Animatable {
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
     }
 }
 
