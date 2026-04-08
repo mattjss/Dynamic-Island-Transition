@@ -13,13 +13,6 @@ struct ContentView: View {
     private let islandBaseW: CGFloat = 126
     private let islandBaseH: CGFloat = 37
 
-    private var taffyShader: Shader {
-        Shader(
-            function: ShaderFunction(library: .default, name: "taffyWarp"),
-            arguments: [.float(Double(progress))]
-        )
-    }
-
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
@@ -30,18 +23,27 @@ struct ContentView: View {
                         .frame(height: geo.size.height * 0.44)
                     HStack {
                         Spacer(minLength: 0)
-                        Image("CardPhoto")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: cardW, height: cardH)
-                            .clipped()
-                            .distortionEffect(
-                                taffyShader,
-                                maxSampleOffset: CGSize(width: 200, height: 480),
-                                isEnabled: true
-                            )
-                            .offset(y: -progress * liftPerProgress)
-                            .opacity(progress >= 0.998 ? 0 : 1)
+                        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { context in
+                            let time = context.date.timeIntervalSinceReferenceDate
+                            Image("CardPhoto")
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: cardW, height: cardH)
+                                .clipped()
+                                .distortionEffect(
+                                    Shader(
+                                        function: ShaderFunction(library: .default, name: "taffyWarp"),
+                                        arguments: [
+                                            .float(Double(progress)),
+                                            .float(time),
+                                        ]
+                                    ),
+                                    maxSampleOffset: CGSize(width: 200, height: 480),
+                                    isEnabled: true
+                                )
+                                .offset(y: -progress * liftPerProgress)
+                                .opacity(progress >= 0.998 ? 0 : 1)
+                        }
                         Spacer(minLength: 0)
                     }
                     Spacer(minLength: 0)
