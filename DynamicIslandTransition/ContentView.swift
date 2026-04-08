@@ -34,6 +34,7 @@ struct ContentView: View {
                                     Shader(
                                         function: ShaderFunction(library: .default, name: "taffyWarp"),
                                         arguments: [
+                                            .boundingRect,
                                             .float(Double(progress)),
                                             .float(time),
                                         ]
