@@ -9,12 +9,14 @@
 /* Begin PBXBuildFile section */
 		62F6E2975344E2396B751EF8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5B151DD8EE502348CB0C3D33 /* Assets.xcassets */; };
 		C2480BD6A3D30A474D117365 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8986004B3D1910E57CF1AEE /* ContentView.swift */; };
+		D4F8E2A16B5C4039A7E8D902 /* taffy-warp-metal.metal in Sources */ = {isa = PBXBuildFile; fileRef = D4F8E2A16B5C4039A7E8D901 /* taffy-warp-metal.metal */; };
 		E85F0CAD1BC21E82DE682CD9 /* DynamicIslandTransitionApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D973965F77EED5AB87C947E0 /* DynamicIslandTransitionApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		5B151DD8EE502348CB0C3D33 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		C8986004B3D1910E57CF1AEE /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		D4F8E2A16B5C4039A7E8D901 /* taffy-warp-metal.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = "taffy-warp-metal.metal"; sourceTree = "<group>"; };
 		D73914A9DCD4894B649FAF6A /* DynamicIslandTransition.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DynamicIslandTransition.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D973965F77EED5AB87C947E0 /* DynamicIslandTransitionApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicIslandTransitionApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -34,6 +36,7 @@
 				5B151DD8EE502348CB0C3D33 /* Assets.xcassets */,
 				C8986004B3D1910E57CF1AEE /* ContentView.swift */,
 				D973965F77EED5AB87C947E0 /* DynamicIslandTransitionApp.swift */,
+				D4F8E2A16B5C4039A7E8D901 /* taffy-warp-metal.metal */,
 			);
 			path = DynamicIslandTransition;
 			sourceTree = "<group>";
@@ -112,6 +115,7 @@
 			files = (
 				C2480BD6A3D30A474D117365 /* ContentView.swift in Sources */,
 				E85F0CAD1BC21E82DE682CD9 /* DynamicIslandTransitionApp.swift in Sources */,
+				D4F8E2A16B5C4039A7E8D902 /* taffy-warp-metal.metal in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
