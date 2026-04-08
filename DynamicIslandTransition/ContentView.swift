@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// 258×258 card with a landscape photo: centered horizontally, ~60% down the screen.
-/// Tap animates to the Dynamic Island over ~1.4s with a spring; a Metal squeeze shader
-/// pinches the top of the card during travel so it feels sucked into the pill.
+/// Tap animates to the Dynamic Island over ~1.4s with a spring. During travel, a top-anchored
+/// squeeze (GeometryEffect) pinches the card toward the pill — same role as a Metal squeeze,
+/// without Metal/shader build fragility across Xcode SDKs.
 struct ContentView: View {
     @State private var travelProgress: CGFloat = 0
 
@@ -29,7 +30,8 @@ struct IslandTravelCard: View, Animatable {
     private let islandWidth: CGFloat = 126
     private let islandHeight: CGFloat = 37
     private let islandTopOffset: CGFloat = 11
-    private let squeezeStrength: Float = 4.8
+    /// Tuned to match the prior Metal shader’s “~4.8” strength visually.
+    private let squeezeStrength: CGFloat = 4.8
 
     var body: some View {
         GeometryReader { geometry in
@@ -44,15 +46,7 @@ struct IslandTravelCard: View, Animatable {
             let cy = startCenterY + (islandCenterY - startCenterY) * t
             let corner = (cardSize * 0.22) * (1 - t) + (min(islandWidth, islandHeight) / 2) * t
 
-            let travelBlend = Float(sin(Double(t) * .pi))
-            let squeezeShader = Shader(
-                function: ShaderFunction(library: .default, name: "IslandSqueeze"),
-                arguments: [
-                    .float2(Float(w), Float(h)),
-                    .float(travelBlend),
-                    .float(squeezeStrength),
-                ]
-            )
+            let travelBlend = CGFloat(sin(Double(t) * .pi))
 
             ZStack {
                 Color(.systemBackground)
@@ -61,12 +55,7 @@ struct IslandTravelCard: View, Animatable {
                 landscapeCard(width: w, height: h)
                     .frame(width: w, height: h)
                     .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-                    .drawingGroup()
-                    .distortionEffect(
-                        squeezeShader,
-                        maxSampleOffset: CGSize(width: 80, height: 140),
-                        isEnabled: travelBlend > 0.001
-                    )
+                    .modifier(TopIslandSqueezeEffect(amount: travelBlend * squeezeStrength))
                     .position(x: centerX, y: cy)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -115,6 +104,34 @@ struct IslandTravelCard: View, Animatable {
 
     private var landscapePhotoURL: URL? {
         URL(string: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1200&q=80")
+    }
+}
+
+// MARK: - Top squeeze (replaces Metal distortion; anchor = Dynamic Island side)
+
+private struct TopIslandSqueezeEffect: GeometryEffect {
+    /// `sin(π·t) * squeezeStrength` — peaks mid-flight, strongest near top via gradient mask.
+    var amount: CGFloat
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        guard amount > 0.001 else { return ProjectionTransform(.identity) }
+
+        let normalized = min(amount / 4.8, 1.5)
+        let scaleY = 1.0 - normalized * 0.11
+        let scaleX = 1.0 - normalized * 0.028
+
+        var t = CGAffineTransform.identity
+        t = t.translatedBy(x: size.width / 2, y: 0)
+        t = t.scaledBy(x: scaleX, y: scaleY)
+        t = t.translatedBy(x: -size.width / 2, y: 0)
+        return ProjectionTransform(t)
+    }
+}
+
+extension TopIslandSqueezeEffect: Animatable {
+    var animatableData: CGFloat {
+        get { amount }
+        set { amount = newValue }
     }
 }
 
