@@ -5,11 +5,11 @@ using namespace metal;
 /// Distortion: returns the layer coordinate to sample for each destination pixel.
 /// progress 0 = identity. Top of card (small y) compresses toward image top first; bottom lags (taffy).
 /// Horizontal pinch toward island width ratio (126/260). At progress 1, vertical span collapses to a thin strip at the top.
-[[ stitchable ]] float2 taffyWarp(float2 position, float2 bounds, float progress) {
-    float minX = 0.0f;
-    float minY = 0.0f;
-    float w = max(bounds.x, 1.0f);
-    float h = max(bounds.y, 1.0f);
+[[ stitchable ]] float2 taffyWarp(float2 position, float4 bounds, float progress) {
+    float minX = bounds.x;
+    float minY = bounds.y;
+    float w = max(bounds.z, 1.0f);
+    float h = max(bounds.w, 1.0f);
 
     float uOut = (position.x - minX) / w;
     float vOut = (position.y - minY) / h;
