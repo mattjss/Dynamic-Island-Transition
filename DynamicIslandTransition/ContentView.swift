@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     @State private var progress: CGFloat = 0
     @State private var suckedIn = false
     @State private var islandBump = false
@@ -22,60 +24,83 @@ struct ContentView: View {
     private let islandBaseW: CGFloat = 126
     private let islandBaseH: CGFloat = 37
 
+    private var canvasBackground: Color {
+        colorScheme == .dark ? .black : .white
+    }
+
+    private var tuningStripBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
+            : Color(red: 242 / 255, green: 242 / 255, blue: 247 / 255)
+    }
+
     var body: some View {
-        ZStack(alignment: .top) {
-            Color(.systemBackground).ignoresSafeArea()
+        GeometryReader { geo in
+            let bottomPanelMaxHeight = min(320, geo.size.height * 0.42)
 
-            GeometryReader { geo in
-                VStack(spacing: 0) {
-                    Color.clear
-                        .frame(height: geo.size.height * 0.44)
-                    HStack {
-                        Spacer(minLength: 0)
-                        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { context in
-                            let time = context.date.timeIntervalSinceReferenceDate
-                            let pLinear = clampedProgress(progress)
-                            let pShader = shaderMotionProgress(pLinear)
-                            cardImageStack(time: time, shaderProgress: pShader)
-                                .offset(y: -liftOffset(progress: pLinear))
-                                .opacity(pLinear >= 0.998 ? 0 : 1)
+            VStack(spacing: 0) {
+                ZStack(alignment: .top) {
+                    canvasBackground
+                        .ignoresSafeArea(edges: [.top, .leading, .trailing])
+
+                    Capsule()
+                        .fill(Color.black)
+                        .frame(
+                            width: islandBump ? islandBaseW + 6 : islandBaseW,
+                            height: islandBump ? islandBaseH + 3 : islandBaseH
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .offset(y: 11)
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+
+                    VStack(spacing: 0) {
+                        Color.clear
+                            .frame(height: max(geo.safeAreaInsets.top + 52, 56))
+                        HStack {
+                            Spacer(minLength: 0)
+                            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { context in
+                                let time = context.date.timeIntervalSinceReferenceDate
+                                let pLinear = clampedProgress(progress)
+                                let pShader = shaderMotionProgress(pLinear)
+                                cardImageStack(time: time, shaderProgress: pShader)
+                                    .offset(y: -liftOffset(progress: pLinear))
+                                    .opacity(pLinear >= 0.998 ? 0 : 1)
+                            }
+                            Spacer(minLength: 0)
                         }
-                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    suckedIn.toggle()
-                    withAnimation(.spring(response: animationDuration, dampingFraction: 0.82)) {
-                        progress = suckedIn ? 1 : 0
+                .onTapGesture(perform: toggleGenieAnimation)
+
+                Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: toggleGenieAnimation)
+
+                Group {
+                    if showDebugPanel {
+                        ScrollView {
+                            debugTuningContent
+                        }
+                        .frame(maxHeight: bottomPanelMaxHeight)
+                    } else {
+                        Button("Show tuning") { showDebugPanel = true }
+                            .font(.caption)
+                            .padding(.vertical, 12)
                     }
                 }
+                .frame(maxWidth: .infinity)
+                .background {
+                    tuningStripBackground
+                        .ignoresSafeArea(edges: .bottom)
+                }
             }
-
-            Capsule()
-                .fill(Color.black)
-                .frame(
-                    width: islandBump ? islandBaseW + 6 : islandBaseW,
-                    height: islandBump ? islandBaseH + 3 : islandBaseH
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .offset(y: 11)
-                .ignoresSafeArea(edges: .top)
-                .allowsHitTesting(false)
-
-            if showDebugPanel {
-                debugPanel
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            } else {
-                Button("Show tuning") { showDebugPanel = true }
-                    .font(.caption)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 8)
-            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
+        .background(canvasBackground)
         .onChange(of: progress) { oldValue, newValue in
             if suckedIn, newValue >= 0.85, oldValue < 0.85 {
                 playIslandBump()
@@ -83,7 +108,14 @@ struct ContentView: View {
         }
     }
 
-    private var debugPanel: some View {
+    private func toggleGenieAnimation() {
+        suckedIn.toggle()
+        withAnimation(.spring(response: animationDuration, dampingFraction: 0.82)) {
+            progress = suckedIn ? 1 : 0
+        }
+    }
+
+    private var debugTuningContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Genie tuning")
@@ -99,9 +131,8 @@ struct ContentView: View {
             sliderRow("Vertical suction", value: $verticalSuctionProgress, range: 0.15 ... 2.2)
         }
         .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.bottom, 24)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
@@ -161,22 +192,22 @@ struct ContentView: View {
             ]
         )
         let cardShape = RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-        ZStack {
-            Image("CardPhoto")
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: cardW, height: cardH)
-        }
-        .frame(width: cardW, height: cardH)
-        .clipShape(cardShape)
-        .overlay {
-            cardShape.strokeBorder(cardStrokeColor, lineWidth: cardStrokeWidth)
-        }
-        .distortionEffect(
-            shader,
-            maxSampleOffset: CGSize(width: 220, height: 520),
-            isEnabled: true
-        )
+        Image("CardPhoto")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: cardW, height: cardH)
+            .clipped()
+            .clipShape(cardShape)
+            .distortionEffect(
+                shader,
+                maxSampleOffset: CGSize(width: 220, height: 520),
+                isEnabled: true
+            )
+            .clipShape(cardShape)
+            .frame(width: cardW, height: cardH)
+            .overlay {
+                cardShape.strokeBorder(cardStrokeColor, lineWidth: cardStrokeWidth)
+            }
     }
 
     /// Matches vertical travel to curved shader progress so lift and warp stay in phase.
