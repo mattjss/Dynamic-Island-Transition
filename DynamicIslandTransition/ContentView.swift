@@ -5,17 +5,25 @@ struct ContentView: View {
     @State private var suckedIn = false
     @State private var islandBump = false
 
-    /// Softer damping + interpolating spring for a slight elastic overshoot (genie / vacuum tail).
-    private let travelSpring = Animation.interpolatingSpring(stiffness: 210, damping: 19)
+    // Debug / tuning (bound to shader + animation)
+    @State private var animationDuration: Double = 0.62
+    @State private var pinchIntensity: Double = 1.0
+    @State private var wobbleAmplitude: Double = 1.0
+    @State private var wobbleFrequency: Double = 1.0
+    @State private var verticalSuctionProgress: Double = 1.0
+    @State private var showDebugPanel = true
+
     private let cardW: CGFloat = 260
     private let cardH: CGFloat = 260
-    /// Max vertical lift; eased so motion tightens mid-suck to match shader suction.
+    private let cardCornerRadius: CGFloat = 10
+    private let cardStrokeWidth: CGFloat = 4
+    private let cardStrokeColor = Color(red: 168 / 255, green: 168 / 255, blue: 168 / 255)
     private let liftPerProgress: CGFloat = 410
     private let islandBaseW: CGFloat = 126
     private let islandBaseH: CGFloat = 37
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             Color(.systemBackground).ignoresSafeArea()
 
             GeometryReader { geo in
@@ -26,31 +34,24 @@ struct ContentView: View {
                         Spacer(minLength: 0)
                         TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { context in
                             let time = context.date.timeIntervalSinceReferenceDate
-                            Image("CardPhoto")
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: cardW, height: cardH)
-                                .clipped()
-                                .distortionEffect(
-                                    Shader(
-                                        function: ShaderFunction(library: .default, name: "taffyWarp"),
-                                        arguments: [
-                                            .boundingRect,
-                                            .float(Double(progress)),
-                                            .float(time),
-                                        ]
-                                    ),
-                                    maxSampleOffset: CGSize(width: 220, height: 520),
-                                    isEnabled: true
-                                )
-                                .offset(y: -liftOffset(progress: progress))
-                                .opacity(progress >= 0.998 ? 0 : 1)
+                            let pLinear = clampedProgress(progress)
+                            let pShader = shaderMotionProgress(pLinear)
+                            cardImageStack(time: time, shaderProgress: pShader)
+                                .offset(y: -liftOffset(progress: pLinear))
+                                .opacity(pLinear >= 0.998 ? 0 : 1)
                         }
                         Spacer(minLength: 0)
                     }
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    suckedIn.toggle()
+                    withAnimation(.spring(response: animationDuration, dampingFraction: 0.82)) {
+                        progress = suckedIn ? 1 : 0
+                    }
+                }
             }
 
             Capsule()
@@ -63,12 +64,16 @@ struct ContentView: View {
                 .offset(y: 11)
                 .ignoresSafeArea(edges: .top)
                 .allowsHitTesting(false)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            suckedIn.toggle()
-            withAnimation(travelSpring) {
-                progress = suckedIn ? 1 : 0
+
+            if showDebugPanel {
+                debugPanel
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            } else {
+                Button("Show tuning") { showDebugPanel = true }
+                    .font(.caption)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 8)
             }
         }
         .onChange(of: progress) { oldValue, newValue in
@@ -78,17 +83,105 @@ struct ContentView: View {
         }
     }
 
-    /// Ease-in-out cubic: slow start, strong mid pull, settle — matches portal suction timing.
-    private func liftOffset(progress: CGFloat) -> CGFloat {
-        let p = Double(progress)
-        let t: Double
-        if p < 0.5 {
-            t = 4 * p * p * p
-        } else {
-            let u = -2 * p + 2
-            t = 1 - u * u * u / 2
+    private var debugPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Genie tuning")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Button("Hide") { showDebugPanel = false }
+                    .font(.caption)
+            }
+            sliderRow("Animation duration", value: $animationDuration, range: 0.28 ... 1.4)
+            sliderRow("Pinch intensity", value: $pinchIntensity, range: 0.2 ... 2.2)
+            sliderRow("Wobble amplitude", value: $wobbleAmplitude, range: 0 ... 3)
+            sliderRow("Wobble frequency", value: $wobbleFrequency, range: 0.2 ... 3)
+            sliderRow("Vertical suction", value: $verticalSuctionProgress, range: 0.15 ... 2.2)
         }
-        return CGFloat(t) * liftPerProgress
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 24)
+    }
+
+    private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.caption)
+                Spacer()
+                Text(String(format: "%.2f", value.wrappedValue))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: range)
+        }
+    }
+
+    /// Single animatable 0…1 progress, clamped after spring (no overshoot in the shader).
+    private func clampedProgress(_ t: CGFloat) -> CGFloat {
+        min(max(t, 0), 1)
+    }
+
+    /// Ease-out heavy: slow start, stronger mid stretch, quick final snap into the island.
+    private func shaderMotionProgress(_ linear: CGFloat) -> CGFloat {
+        let t = Double(clampedProgress(linear))
+        // Primary: cubic ease-in-out (slow ends of normalized curve) — then bias late segment toward ease-out snap.
+        let cubic: Double
+        if t < 0.5 {
+            cubic = 4 * t * t * t
+        } else {
+            let u = -2 * t + 2
+            cubic = 1 - u * u * u / 2
+        }
+        // Blend from cubic to quartic ease-out in the last ~22% so the card seals into the pill cleanly.
+        let blendStart = 0.78
+        if t <= blendStart {
+            return CGFloat(cubic)
+        }
+        let u = (t - blendStart) / (1 - blendStart)
+        let smooth = u * u * (3 - 2 * u)
+        let easeOutSnap = 1 - pow(1 - t, 2.8)
+        let mixed = cubic * (1 - smooth) + easeOutSnap * smooth
+        return CGFloat(min(max(mixed, 0), 1))
+    }
+
+    @ViewBuilder
+    private func cardImageStack(time: Double, shaderProgress: CGFloat) -> some View {
+        let shader = Shader(
+            function: ShaderFunction(library: .default, name: "taffyWarp"),
+            arguments: [
+                .boundingRect,
+                .float(Double(shaderProgress)),
+                .float(time),
+                .float(pinchIntensity),
+                .float(wobbleAmplitude),
+                .float(wobbleFrequency),
+                .float(verticalSuctionProgress),
+            ]
+        )
+        let cardShape = RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
+        ZStack {
+            Image("CardPhoto")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: cardW, height: cardH)
+        }
+        .frame(width: cardW, height: cardH)
+        .clipShape(cardShape)
+        .overlay {
+            cardShape.strokeBorder(cardStrokeColor, lineWidth: cardStrokeWidth)
+        }
+        .distortionEffect(
+            shader,
+            maxSampleOffset: CGSize(width: 220, height: 520),
+            isEnabled: true
+        )
+    }
+
+    /// Matches vertical travel to curved shader progress so lift and warp stay in phase.
+    private func liftOffset(progress: CGFloat) -> CGFloat {
+        CGFloat(shaderMotionProgress(progress)) * liftPerProgress
     }
 
     private func playIslandBump() {
