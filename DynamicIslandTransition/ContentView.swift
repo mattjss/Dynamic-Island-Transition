@@ -16,8 +16,8 @@ struct ContentView: View {
     private let cardW: CGFloat = 260
     private let cardH: CGFloat = 260
     private let cardCornerRadius: CGFloat = 10
-    private let cardStrokeWidth: CGFloat = 4
-    private let cardStrokeColor = Color(red: 168 / 255, green: 168 / 255, blue: 168 / 255)
+    private let cardStrokeWidth: CGFloat = 2
+    private let cardStrokeColor = Color(red: 248 / 255, green: 248 / 255, blue: 248 / 255)
     private let liftPerProgress: CGFloat = 410
     private let islandBaseW: CGFloat = 126
     private let islandBaseH: CGFloat = 37
