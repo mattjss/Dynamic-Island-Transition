@@ -175,7 +175,7 @@ private struct WarpedCardImage: View, Animatable {
     private let cardW: CGFloat = 260
     private let cardH: CGFloat = 260
     private let cardCornerRadius: CGFloat = 10
-    private let cardStrokeWidth: CGFloat = 2
+    private let cardStrokeWidth: CGFloat = 7
     private let cardStrokeColor = Color(red: 248 / 255, green: 248 / 255, blue: 248 / 255)
 
     var body: some View {
