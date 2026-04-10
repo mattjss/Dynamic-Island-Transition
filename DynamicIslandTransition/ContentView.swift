@@ -89,7 +89,7 @@ struct ContentView: View {
                             .padding(.vertical, 12)
                     }
                 }
-                .frame(maxWidth: .infinity, height: showDebugPanel ? controlPanelHeight : 52, alignment: .bottom)
+                .frame(maxWidth: .infinity)
                 .background {
                     tuningStripBackground
                         .ignoresSafeArea(edges: .bottom)
