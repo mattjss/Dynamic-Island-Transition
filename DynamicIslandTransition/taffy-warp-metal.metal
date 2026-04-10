@@ -2,17 +2,14 @@
 #include <SwiftUI/SwiftUI_Metal.h>
 using namespace metal;
 
-/// Genie suction toward Dynamic Island (126/260 width); extra floats are debug uniforms.
+/// Inverse distortion for SwiftUI `distortionEffect`: returns **source** pixel (user space) for each **destination** pixel.
+/// `position` / return value share the same coordinate space as `bounds` (x, y, width, height).
+/// Uses `progress` (0…1) plus five UI uniforms: pinchIntensity, wobbleAmplitude, wobbleFrequency, verticalSuction, and `time`.
 [[ stitchable ]] float2 taffyWarp(float2 position, float4 bounds, float progress, float time, float pinchIntensity, float wobbleAmplitude, float wobbleFrequency, float verticalSuction) {
     float minX = bounds.x;
     float minY = bounds.y;
     float w = max(bounds.z, 1.0f);
     float h = max(bounds.w, 1.0f);
-
-    float CX = minX + w * 0.5f;
-
-    float uOut = (position.x - CX) / w + 0.5f;
-    float vOut = (position.y - minY) / h;
 
     float p = clamp(progress, 0.0f, 1.0f);
     float pinchK = max(pinchIntensity, 0.05f);
@@ -20,33 +17,42 @@ using namespace metal;
     float wobbleF = max(wobbleFrequency, 0.05f);
     float vertK = max(verticalSuction, 0.01f);
 
-    // Row weight: 0 = top (mouth / portal), 1 = bottom (taffy tail).
-    float tail = pow(saturate(vOut), 0.78f);
+    // Normalized: x left→right, y top→bottom of the layer.
+    float xn = (position.x - minX) / w;
+    float yn = (position.y - minY) / h;
 
-    // Top leads: full suction curve by ~mid progress. Bottom trails: shifted smoothstep (elastic lag).
-    float phaseTop = smoothstep(0.0f, 0.48f, p);
-    float phaseBot = smoothstep(0.14f, 0.98f, p);
-    float pRow = mix(phaseTop, phaseBot, tail);
+    // Top (yn≈0) leads toward the island; bottom (yn≈1) trails with delay — genie tail.
+    float tailWeight = pow(saturate(yn), 0.9f);
+    float phaseTop = smoothstep(0.0f, 0.4f, p);
+    float phaseBot = smoothstep(0.08f, 0.98f, p);
+    float rowPhase = mix(phaseTop, phaseBot, tailWeight);
 
-    // Trailing elastic wobble (stronger on bottom, only mid-flight).
-    float wobbleAmp = 0.014f * p * (1.0f - p) * tail * wobbleK;
-    float uWobble = wobbleAmp * sin(time * (5.5f * wobbleF) + vOut * 9.0f);
-    float vWobble = wobbleAmp * cos(time * (4.8f * wobbleF) + vOut * 11.0f);
-
-    // Horizontal genie pinch: collapse width toward island ratio 126/260 as progress increases.
+    // Horizontal pinch toward center: stronger at top edge (portal), weaker at bottom.
     constexpr float islandRatio = 126.0f / 260.0f;
-    float pinchTop = mix(1.0f, islandRatio, saturate(pRow * pinchK * (1.0f + 0.5f * (1.0f - vOut))));
-    float pinchBot = mix(1.0f, islandRatio, saturate(pRow * pinchK * 0.62f));
-    float pinch = mix(pinchTop, pinchBot, smoothstep(0.0f, 1.0f, vOut));
+    float pinchStrength = saturate(rowPhase * pinchK);
+    float pinchTop = mix(1.0f, islandRatio, pinchStrength);
+    float pinchBot = mix(1.0f, mix(1.0f, islandRatio, 0.58f), pinchStrength);
+    float pinchAmt = mix(pinchTop, pinchBot, smoothstep(0.0f, 1.0f, yn));
 
-    float uNorm = (uOut - 0.5f) / max(pinch, 0.001f) + 0.5f + uWobble;
-    uNorm = saturate(uNorm);
+    float xc = 0.5f;
+    float xSrc = xc + (xn - xc) / max(pinchAmt, 0.06f);
 
-    // Vertical suction: top rows reach the portal first; bottom lags. vertK scales compression strength.
-    float suck = pow(saturate(pRow), 0.88f);
-    float vCompress = mix(1.0f, 0.04f, saturate(suck * vertK));
-    float taper = (1.0f - suck) * tail * 0.12f * sin(p * 3.14159265f);
-    float vNorm = saturate(vOut * vCompress + taper + vWobble);
+    // Trailing wobble: mostly bottom, strongest mid-animation; scales with wobbleAmplitude & wobbleFrequency.
+    float wobbleEnvelope = p * (1.0f - p);
+    float horizWobble = 0.028f * wobbleK * wobbleEnvelope * tailWeight * sin(time * (0.5f * wobbleF) + yn * 17.0f);
+    xSrc += horizWobble;
+    xSrc = saturate(xSrc);
 
-    return float2(minX + uNorm * w, minY + vNorm * h);
+    // Vertical suction: compress sampling toward the top (content appears stretched up toward Dynamic Island).
+    float vertDrive = saturate(pow(rowPhase, 0.82f) * vertK);
+    float ynCompressed = yn * mix(1.0f, 0.12f + 0.2f * yn, vertDrive);
+    float taper = (1.0f - vertDrive) * tailWeight * 0.07f * sin(p * 3.14159265f);
+    float vertWobble = 0.022f * wobbleK * wobbleEnvelope * tailWeight * cos(time * (0.4f * wobbleF) + yn * 13.0f);
+    float ySrc = saturate(ynCompressed + taper + vertWobble);
+
+    float2 samplePos = float2(minX + xSrc * w, minY + ySrc * h);
+
+    // Smooth blend to identity at p≈0 so the card is perfectly flat at rest.
+    float warpBlend = smoothstep(0.0f, 0.04f, p);
+    return mix(position, samplePos, warpBlend);
 }
