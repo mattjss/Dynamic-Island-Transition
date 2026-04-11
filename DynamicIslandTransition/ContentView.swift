@@ -1,142 +1,133 @@
 import SwiftUI
 
 struct ContentView: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     @State private var progress: CGFloat = 0
     @State private var suckedIn = false
     @State private var islandBump = false
     @State private var islandPreRelease = false
     @State private var didPlayBump = false
+    @State private var showTuningSheet = false
 
-    /// Suction phase duration (spring response ≈ perceived length), ~0.35–0.4s snappy.
-    @State private var animationDuration: Double = 0.37
-    @State private var pinchIntensity: Double = 0.95
-    @State private var wobbleAmplitude: Double = 0.32
-    @State private var wobbleFrequency: Double = 11
-    /// Scales vertical suction in the shader and upward translation of the card.
-    @State private var verticalSuctionProgress: Double = 0.92
-    @State private var showDebugPanel = true
+    @State private var duration: Double = 0.37
+    @State private var squeezeStrength: Double = 0.95
+    @State private var squeezeZone: Double = 0.55
+    @State private var cardHeight: Double = 260
+    @State private var cardWidth: Double = 260
 
     private let cardCornerRadius: CGFloat = 10
     private let islandBaseW: CGFloat = 126
     private let islandBaseH: CGFloat = 37
 
     private var releaseSpringResponse: Double {
-        max(0.45, animationDuration * 1.38)
+        max(0.55, duration * 1.75)
     }
 
-    private var canvasBackground: Color {
-        colorScheme == .dark ? .black : .white
+    private var releaseDamping: Double {
+        0.52
     }
 
-    private var tuningStripBackground: Color {
-        colorScheme == .dark
-            ? Color(red: 28 / 255, green: 28 / 255, blue: 30 / 255)
-            : Color(red: 242 / 255, green: 242 / 255, blue: 247 / 255)
+    private var islandScale: CGFloat {
+        if islandPreRelease { return 1.06 }
+        if islandBump { return 1.14 }
+        return 1.0
     }
 
     var body: some View {
         GeometryReader { geo in
-            let panelMaxHeight = min(geo.size.height * 0.5, 520)
-            let bottomInset = geo.safeAreaInsets.bottom
+            let islandCenterY = geo.safeAreaInsets.top + 11 + islandBaseH * 0.5
+            let screenCenterY = geo.size.height * 0.5
+            let travelToIsland = screenCenterY - islandCenterY
 
-            VStack(spacing: 0) {
-                ZStack(alignment: .top) {
-                    canvasBackground
-                        .ignoresSafeArea(edges: [.top, .leading, .trailing])
+            ZStack {
+                Color.white
+                    .ignoresSafeArea()
 
-                    Capsule()
-                        .fill(Color.black)
-                        .frame(width: islandDisplayWidth, height: islandDisplayHeight)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .offset(y: 11)
-                        .ignoresSafeArea(edges: .top)
-                        .contentShape(Capsule())
-                        .allowsHitTesting(suckedIn)
-                        .onTapGesture(perform: spitOut)
+                Capsule()
+                    .fill(Color.black)
+                    .frame(width: islandBaseW, height: islandBaseH)
+                    .scaleEffect(islandScale)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .offset(y: 11)
+                    .ignoresSafeArea(edges: .top)
+                    .contentShape(Capsule())
+                    .allowsHitTesting(suckedIn)
+                    .onTapGesture(perform: spitOut)
 
-                    VStack(spacing: 0) {
-                        Color.clear
-                            .frame(height: max(geo.safeAreaInsets.top + 52, 56))
-                        HStack {
-                            Spacer(minLength: 0)
-                            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { context in
-                                let time = context.date.timeIntervalSinceReferenceDate
-                                let liftP = min(max(progress, 0), 1)
-                                let lift = CGFloat(verticalSuctionProgress) * 108 * liftP
-                                WarpedCardImage(
-                                    progress: progress,
-                                    time: time,
-                                    pinchIntensity: pinchIntensity,
-                                    wobbleAmplitude: wobbleAmplitude,
-                                    wobbleFrequency: wobbleFrequency,
-                                    verticalSuctionProgress: verticalSuctionProgress
-                                )
-                                .offset(y: -lift)
-                                .contentShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
-                                .onTapGesture(perform: startSuckIn)
-                            }
-                            Spacer(minLength: 0)
-                        }
+                WarpedCardImage(
+                    progress: progress,
+                    squeezeStrength: squeezeStrength,
+                    squeezeZone: squeezeZone,
+                    islandWidthRatio: islandBaseW / CGFloat(cardWidth),
+                    cardWidth: CGFloat(cardWidth),
+                    cardHeight: CGFloat(cardHeight),
+                    cardCornerRadius: cardCornerRadius
+                )
+                .offset(y: -travelToIsland * progress)
+                .contentShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
+                .onTapGesture(perform: startSuckIn)
+
+                VStack {
+                    Spacer()
+                    Button {
+                        showTuningSheet = true
+                    } label: {
+                        Capsule()
+                            .fill(Color.gray.opacity(0.22))
+                            .frame(width: 44, height: 5)
                     }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .layoutPriority(1)
-
-                Group {
-                    if showDebugPanel {
-                        ScrollView {
-                            controlPanelContent
-                                .padding(.bottom, 16 + bottomInset)
-                        }
-                        .frame(maxHeight: panelMaxHeight)
-                        .scrollIndicators(.visible)
-                        .scrollBounceBehavior(.basedOnSize)
-                    } else {
-                        Button("Show tuning") { showDebugPanel = true }
-                            .font(.caption)
-                            .padding(.vertical, 12)
-                            .padding(.bottom, bottomInset)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .background {
-                    tuningStripBackground
-                        .ignoresSafeArea(edges: .bottom)
+                    .accessibilityLabel("Show tuning")
+                    .padding(.bottom, max(geo.safeAreaInsets.bottom, 20))
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        .background(canvasBackground)
+        .background(Color.white)
+        .sheet(isPresented: $showTuningSheet) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Squeeze Strength")
+                        Slider(value: $squeezeStrength, in: 0.35 ... 1.6)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Squeeze Zone")
+                        Slider(value: $squeezeZone, in: 0.12 ... 1.0)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Duration")
+                        Slider(value: $duration, in: 0.22 ... 0.65)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Card Height")
+                        Slider(value: $cardHeight, in: 160 ... 340)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Card Width")
+                        Slider(value: $cardWidth, in: 160 ... 340)
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
         .onChange(of: suckedIn) { _, newValue in
             if newValue { didPlayBump = false }
         }
         .onChange(of: progress) { oldValue, newValue in
-            guard suckedIn, !didPlayBump, newValue >= 0.99 else { return }
-            if oldValue < 0.99 {
+            guard suckedIn, !didPlayBump, newValue >= 1 else { return }
+            if oldValue < 1 {
                 didPlayBump = true
                 playIslandBump()
             }
         }
     }
 
-    private var islandDisplayWidth: CGFloat {
-        if islandPreRelease { return islandBaseW + 5 }
-        if islandBump { return islandBaseW + 8 }
-        return islandBaseW
-    }
-
-    private var islandDisplayHeight: CGFloat {
-        if islandPreRelease { return islandBaseH + 2 }
-        if islandBump { return islandBaseH + 4 }
-        return islandBaseH
-    }
-
     private func startSuckIn() {
         guard !suckedIn else { return }
         suckedIn = true
-        withAnimation(.spring(response: animationDuration, dampingFraction: 0.72)) {
+        withAnimation(.spring(response: duration, dampingFraction: 0.72)) {
             progress = 1
         }
     }
@@ -148,7 +139,7 @@ struct ContentView: View {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             suckedIn = false
-            withAnimation(.spring(response: releaseSpringResponse, dampingFraction: 0.58)) {
+            withAnimation(.spring(response: releaseSpringResponse, dampingFraction: releaseDamping)) {
                 progress = 0
             }
             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -157,45 +148,6 @@ struct ContentView: View {
         }
     }
 
-    private var controlPanelContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Control Panel")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Button("Hide") { showDebugPanel = false }
-                    .font(.caption)
-            }
-            Toggle("Show debug panel", isOn: $showDebugPanel)
-                .font(.subheadline)
-            sliderRow("Suction duration (s)", value: $animationDuration, range: 0.25 ... 0.5)
-            sliderRow("Pinch intensity", value: $pinchIntensity, range: 0.35 ... 1.6)
-            sliderRow("Wobble amplitude", value: $wobbleAmplitude, range: 0 ... 1.2)
-            sliderRow("Wobble frequency", value: $wobbleFrequency, range: 4 ... 22)
-            sliderRow("Vertical suction speed", value: $verticalSuctionProgress, range: 0.35 ... 1.35)
-            Text("Release uses a slower spring (~\(String(format: "%.2f", releaseSpringResponse))s) with bounce.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(title)
-                    .font(.caption)
-                Spacer()
-                Text(String(format: "%.2f", value.wrappedValue))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            Slider(value: value, in: range)
-        }
-    }
-
-    /// After the card is eaten: expand +8×+4pt, then spring back over ~0.3s.
     private func playIslandBump() {
         withAnimation(.spring(response: 0.12, dampingFraction: 0.75)) {
             islandBump = true
@@ -212,20 +164,17 @@ struct ContentView: View {
 @MainActor
 private struct WarpedCardImage: View, Animatable {
     var progress: CGFloat
-    var time: Double
-    var pinchIntensity: Double
-    var wobbleAmplitude: Double
-    var wobbleFrequency: Double
-    var verticalSuctionProgress: Double
+    var squeezeStrength: Double
+    var squeezeZone: Double
+    var islandWidthRatio: CGFloat
+    var cardWidth: CGFloat
+    var cardHeight: CGFloat
+    var cardCornerRadius: CGFloat
 
     nonisolated var animatableData: CGFloat {
         get { progress }
         set { progress = newValue }
     }
-
-    private let cardW: CGFloat = 260
-    private let cardH: CGFloat = 260
-    private let cardCornerRadius: CGFloat = 10
 
     var body: some View {
         let cardShape = RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
@@ -234,26 +183,24 @@ private struct WarpedCardImage: View, Animatable {
             arguments: [
                 .boundingRect,
                 .float(Double(progress)),
-                .float(time),
-                .float(pinchIntensity),
-                .float(wobbleAmplitude),
-                .float(wobbleFrequency),
-                .float(verticalSuctionProgress),
+                .float(squeezeStrength),
+                .float(squeezeZone),
+                .float(Double(islandWidthRatio)),
             ]
         )
         Image("CardPhoto")
             .resizable()
             .aspectRatio(contentMode: .fill)
-            .frame(width: cardW, height: cardH)
+            .frame(width: cardWidth, height: cardHeight)
             .clipped()
             .clipShape(cardShape)
             .distortionEffect(
                 shader,
-                maxSampleOffset: CGSize(width: 360, height: 720),
+                maxSampleOffset: CGSize(width: 420, height: 840),
                 isEnabled: true
             )
             .clipShape(cardShape)
-            .frame(width: cardW, height: cardH)
+            .frame(width: cardWidth, height: cardHeight)
     }
 }
 
